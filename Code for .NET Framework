@@ -1,0 +1,116 @@
+using System;
+using System.IO.Ports;
+using System.Windows.Forms;
+
+namespace EyeControlApp
+{
+    public partial class Form1 : Form
+    {
+        SerialPort serial;
+        int lr = 90; //initial position of left/righ servo
+        int ud = 90; //inital position of up/down servo
+        int blink = 0; //initial position for the blink servos
+
+        public Form1()
+        {
+            InitializeComponent();
+
+
+            // Initialize Serial Port (adjust "COM3" if needed for your system)
+            serial = new SerialPort("COM3", 9600); //serial port to communicate with Arduino
+
+            try
+            {
+                serial.Open(); //attempt to open the serial port
+            }
+            catch (Exception ex)
+            {
+                //Show error message if port cannot be opened
+                MessageBox.Show("Could not open serial port: " + ex.Message);
+            }
+
+            // Allows the form to recieve keyboard input
+            this.KeyPreview = true;
+            this.KeyDown += Form1_KeyDown; // Attach event handler for key presses
+        }
+        private void Form1_Load(object sender, EventArgs e)
+        {
+            ResetServos();  //Send initial neutral values to the Arduino
+        }
+
+        // Event handler for key presses
+        private void Form1_KeyDown(object sender, KeyEventArgs e)
+        {
+            switch (e.KeyCode)
+            {
+                case Keys.Left:
+                    lr = Math.Max(0, lr - 5); // Move eye left (min 0)
+                    break;
+                case Keys.Right:
+                    lr = Math.Min(180, lr + 5); // Move eye right (max 180)
+                    break;
+                case Keys.Down:
+                    ud = Math.Max(0, ud - 5);  // Move eye down (min 0)
+                    break;
+                case Keys.Up:
+                    ud = Math.Min(180, ud + 5); // Move eye up (max 180)
+                    break;
+                case Keys.Space:
+                    blink = 1; // Simulate blink
+                    SendToArduino(); // Immediately send blink signal
+                    break;
+            }
+
+            SendToArduino(); // Send current Servo positions to Arduino
+
+            if (blink == 1)
+            {
+                // Wait for a short delay to simulate the blink (eyes closed)
+                Timer blinkTimer = new Timer();
+                blinkTimer.Interval = 300; // Time to keep eyes closed (in milliseconds)
+                blinkTimer.Tick += (s, args) =>
+                {
+                    blink = 0;  // Open eyes again
+                    blinkTimer.Stop();
+                    SendToArduino();
+                };
+                blinkTimer.Start();
+                
+            }
+        }
+        
+        // Send servo positions and blink state to Arduino
+        private void SendToArduino()
+        {
+            if (serial.IsOpen)
+            {
+                byte[] data = new byte[3];
+                data[0] = (byte)lr; // Horizontal servo positions
+                data[1] = (byte)ud; // Vertical servo positons
+                data[2] = (byte)blink; // Blink state (0 or 1)
+                serial.Write(data, 0, 3); // Send all three bytes
+            }
+        }
+        // Called when form is closing
+        protected override void OnFormClosing(FormClosingEventArgs e)
+        {
+            ResetServos(); // Resets servos back to initial position before closing
+            if (serial.IsOpen)
+                serial.Close(); // Close serial port if it's still open
+
+            base.OnFormClosing(e);
+        }
+
+        // Method to reset servos to neutral positions
+        private void ResetServos()
+        {
+            if (serial.IsOpen)
+            {
+                byte[] resetData = new byte[3];
+                resetData[0] = 90;  // Reset left/right to 90 (neutral position)
+                resetData[1] = 90;  // Reset up/down to 90 (neutral position)
+                resetData[2] = 0;   // Reset blink to 0 (no blink)
+
+                serial.Write(resetData, 0, 3);  // Send reset command to Arduino
+            }
+        }
